@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+if [ "$1" = "configure" ]; then
+    # Start for every user at login. The current session still needs:
+    #   systemctl --user daemon-reload && systemctl --user start tunnel-keeper
+    systemctl --global enable tunnel-keeper.service >/dev/null 2>&1 || true
+    echo "tunnel-keeper: as your user, run:"
+    echo "  systemctl --user daemon-reload && systemctl --user restart tunnel-keeper"
+    echo "  (pkill -f tunnel-keeper-indicator; tunnel-keeper-indicator &)"
+fi
+exit 0

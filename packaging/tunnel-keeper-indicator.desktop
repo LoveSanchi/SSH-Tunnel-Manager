@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Tunnel Keeper
+Comment=Show and control SSH tunnels from the top bar
+Exec=tunnel-keeper-indicator
+Icon=network-vpn
+Terminal=false
+Categories=Network;Utility;
+X-GNOME-Autostart-enabled=true

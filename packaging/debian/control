@@ -1,0 +1,13 @@
+Package: tunnel-keeper
+Version: @VERSION@
+Architecture: all
+Maintainer: Arvind <arvindkumarsjpr@gmail.com>
+Section: net
+Priority: optional
+Depends: python3 (>= 3.10), openssh-client, python3-gi, gir1.2-gtk-3.0, gir1.2-ayatanaappindicator3-0.1, python3-pymysql
+Recommends: sshpass, gnome-shell-extension-appindicator
+Description: keep SSH tunnels alive, with a top-bar status indicator
+ A systemd user service checks each configured SSH port-forward every few
+ minutes (MySQL tunnels with a real SELECT 1) and reopens any that are down
+ or half-dead. A top-bar indicator shows their status and lets you create,
+ kill, restart and refresh tunnels. Control from scripts with tunnelctl.
