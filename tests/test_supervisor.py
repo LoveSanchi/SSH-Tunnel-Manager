@@ -26,6 +26,7 @@ def test_initial_snapshot_before_any_check(sup):
 
 def test_opens_tunnel_when_port_closed(sup, world):
     status = sup.heal("orders")
+    assert world.prepared == ["orders"]  # control socket readied before every launch
     assert status.state == "up" and status.pid == world.launched[0].pid
     assert not status.external
 

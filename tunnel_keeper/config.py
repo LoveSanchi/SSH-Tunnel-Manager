@@ -19,7 +19,11 @@ MIN_INTERVAL_SECONDS = 30
 MAX_INTERVAL_SECONDS = 3600
 
 AUTH_TYPES = ("agent", "key", "password_file")
-CHECK_TYPES = ("port", "mysql")
+# tcp:   the far end (remote_host:remote_port) must accept a connection made through the tunnel.
+# mysql: SELECT 1 through the tunnel, with credentials.
+CHECK_TYPES = ("tcp", "mysql")
+_LEGACY_CHECK_TYPES = {"port": "tcp"}  # "port" only checked the local listener — never trusted now
+MYSQL_LIKE_PORTS = range(3306, 3311)
 
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 # Hosts and users end up as ssh arguments: a leading "-" would be read as an option.
@@ -43,7 +47,7 @@ class Tunnel:
     enabled: bool = True
     auth_type: str = "agent"
     auth_path: str = ""
-    check_type: str = "port"
+    check_type: str = "tcp"
     check_user: str = ""
     check_password_file: str = ""
     check_database: str = ""
@@ -138,6 +142,8 @@ def validate(t: Tunnel) -> Tunnel:
 
 
 def tunnel_from_dict(raw: Mapping[str, Any]) -> Tunnel:
+    if raw.get("check_type") in _LEGACY_CHECK_TYPES:
+        raw = {**raw, "check_type": _LEGACY_CHECK_TYPES[raw["check_type"]]}
     known = {f.name for f in dataclasses.fields(Tunnel)}
     unknown = sorted(set(raw) - known)
     _require(not unknown, f"unknown tunnel field(s): {', '.join(unknown)}")
@@ -157,6 +163,15 @@ def _check_type(name: str, value: Any, expected: type) -> None:
     # bool is a subclass of int: a port of `true` must not pass as 1.
     ok = isinstance(value, expected) and (expected is bool or not isinstance(value, bool))
     _require(ok, f"tunnel field '{name}' must be a {expected.__name__}")
+
+
+def warnings(t: Tunnel) -> list[str]:
+    """Advice that does not make a definition invalid."""
+    if t.check_type == "tcp" and t.remote_port in MYSQL_LIKE_PORTS:
+        return [f"port {t.remote_port} is usually MySQL: a plain reachability check opens and drops a "
+                f"connection every interval, and MySQL blocks a host after max_connect_errors of those "
+                f"(100 by default). Choose the MySQL check (SELECT 1) instead if this is MySQL."]
+    return []
 
 
 def tunnel_to_dict(t: Tunnel) -> dict[str, Any]:

@@ -54,12 +54,13 @@ ROWS = [
     {"name": "orders-db", "state": "up", "detail": "SELECT 1 ok", "enabled": True, "local_port": 3390,
      "remote": "10.20.0.7:3306", "via": "deploy@bastion.example.com:22", "check_type": "mysql",
      "checked_at": NOW - 42, "failures": 0, "next_retry_at": 0, "external": False, "pid": 4242},
-    {"name": "analytics-db", "state": "down", "detail": "ssh exited: Connection timed out; waiting to retry",
+    {"name": "analytics-db", "state": "error",
+     "detail": "tunnel open but check failed: no answer from 10.20.0.9:3306 within 10s (unreachable or filtered from the bastion)",
      "enabled": True, "local_port": 3391, "remote": "10.20.0.9:3306", "via": "deploy@bastion.example.com:22",
      "check_type": "mysql", "checked_at": NOW - 8, "failures": 2, "next_retry_at": NOW + 22,
-     "external": False, "pid": None},
-    {"name": "cache-redis", "state": "up", "detail": "port open", "enabled": True, "local_port": 6380,
-     "remote": "10.20.1.4:6379", "via": "deploy@bastion.example.com:22", "check_type": "port",
+     "external": False, "pid": 4244},
+    {"name": "cache-redis", "state": "up", "detail": "far end 10.20.1.4:6379 reachable", "enabled": True,
+     "local_port": 6380, "remote": "10.20.1.4:6379", "via": "deploy@bastion.example.com:22", "check_type": "tcp",
      "checked_at": NOW - 42, "failures": 0, "next_retry_at": 0, "external": False, "pid": 4243},
     {"name": "reports-db", "state": "stopped", "detail": "stopped", "enabled": False, "local_port": 3392,
      "remote": "10.20.0.11:3306", "via": "deploy@bastion.example.com:22", "check_type": "mysql",
@@ -71,12 +72,10 @@ DEFINITION = {"name": "orders-db", "ssh_user": "deploy", "ssh_host": "bastion.ex
               "check_password_file": "~/.config/tunnel-keeper/secrets/orders-db.mysql-password", "enabled": True}
 LOG = """── Service events for analytics-db (journalctl --user -u tunnel-keeper) ──
 2026-10-29T09:12:03+0000 laptop tunnel-keeperd[812]: INFO analytics-db: up — SELECT 1 ok
-2026-10-29T11:40:17+0000 laptop tunnel-keeperd[812]: WARNING analytics-db: down — ssh exited: Connection timed out; waiting to retry
-2026-10-29T11:40:32+0000 laptop tunnel-keeperd[812]: WARNING analytics-db: error — ssh exited: Connection timed out
+2026-10-29T11:40:17+0000 laptop tunnel-keeperd[812]: WARNING analytics-db: error — tunnel open but check failed: no answer from 10.20.0.9:3306 within 10s (unreachable or filtered from the bastion)
 
 ── ssh output (~/.local/state/tunnel-keeper/analytics-db.log) ──
 --- 2026-10-29T11:40:32 starting: ssh -N -p 22 -L 127.0.0.1:3391:10.20.0.9:3306 -o ExitOnForwardFailure=yes … deploy@bastion.example.com
-ssh: connect to host bastion.example.com port 22: Connection timed out
 """
 
 
@@ -97,7 +96,8 @@ def spin(ms: int) -> None:
     loop.run()
 
 
-def snapshot(widget: Gtk.Widget, name: str, width: int = -1, framed: bool = True) -> None:
+def snapshot(widget: Gtk.Widget, name: str, width: int = -1, framed: bool = True,
+             show_all: bool = True) -> None:
     """Render `widget` in an offscreen window and save it as a PNG."""
     off = Gtk.OffscreenWindow()
     if width > 0:
@@ -108,7 +108,11 @@ def snapshot(widget: Gtk.Widget, name: str, width: int = -1, framed: bool = True
         frame.add(widget)
         widget = frame
     off.add(widget)
-    off.show_all()
+    if show_all:
+        off.show_all()
+    else:  # keep the dialog's own hidden fields hidden
+        widget.show()
+        off.show()
     spin(400)
     off.get_surface().write_to_png(str(OUT / name))
     print("wrote", OUT / name)
@@ -119,7 +123,7 @@ def take(dialog: Gtk.Window, name: str, width: int = -1) -> None:
     body = dialog.get_child()
     dialog.remove(body)
     dialog.destroy()
-    snapshot(body, name, width)
+    snapshot(body, name, width, show_all=False)
 
 
 MENU_CSS = b"""
@@ -188,7 +192,10 @@ def main() -> None:
     install_css()
     menu_png()
 
-    take(TunnelDialog(lambda *a: None), "new-tunnel.png", 480)
+    new = TunnelDialog(lambda *a: None)
+    new._entries["remote_port"].set_text("3306")  # shows the MySQL-port warning
+    spin(200)
+    take(new, "new-tunnel.png", 480)
     take(TunnelDialog(lambda *a: None, initial=model.tunnel_to_form(DEFINITION)), "edit-tunnel.png", 480)
     take(windows.SettingsDialog(120, lambda *a: None), "settings.png", 460)
 

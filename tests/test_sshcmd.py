@@ -34,3 +34,17 @@ def test_password_file_falls_back_to_askpass(tunnel, tmp_path):
     assert cmd.env["SSH_ASKPASS_REQUIRE"] == "force"
     assert cmd.env["TUNNEL_KEEPER_PASSWORD_FILE"] == "/secret/pw"
     assert "/secret/pw" not in cmd.argv  # the path is passed by env, never argv
+
+
+def test_tunnel_is_a_control_master(tunnel):
+    argv = sshcmd.build(tunnel).argv
+    i = argv.index("ControlMaster=yes")
+    assert argv[i + 2].startswith("ControlPath=") and argv[i + 2].endswith("/tunnel-keeper/orders.ctl")
+
+
+def test_probe_commands(tunnel):
+    mux = sshcmd.build_mux_probe(tunnel).argv
+    assert mux[:3] == ("ssh", "-v", "-S") and "-W" in mux and "10.20.0.7:3306" in mux
+    standalone = sshcmd.build_standalone_probe(tunnel, sshpass="").argv
+    assert "-W" in standalone and "-L" not in standalone and "ControlPath=none" in standalone
+    assert standalone[-1] == "deploy@10.0.0.5"

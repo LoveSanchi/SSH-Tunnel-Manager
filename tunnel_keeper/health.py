@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import os
+import selectors
+import signal
 import socket
+import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from tunnel_keeper import paths
+from typing import Callable
+
+from tunnel_keeper import paths, sshcmd
 from tunnel_keeper.config import Tunnel
 
 PORT_TIMEOUT_SECONDS = 2.0
@@ -124,7 +130,87 @@ def _failed(exc: Exception) -> Probe:
 
 
 def probe(tunnel: Tunnel) -> Probe:
+    if not port_open(tunnel.local_port):
+        return Probe(False, f"nothing listening on local port {tunnel.local_port}")
     if tunnel.check_type == "mysql":
         return mysql_probe(tunnel)
-    ok = port_open(tunnel.local_port)
-    return Probe(ok, "port open" if ok else "port closed", reachable=ok)
+    return tcp_probe(tunnel)
+
+
+# ── tcp: can the far end be reached through the tunnel? ──────────────────────
+# Connecting to the local port proves nothing: when the bastion cannot reach the target
+# its connect just hangs, which looks exactly like a quiet, healthy service. So ssh is
+# asked directly whether it could open remote_host:remote_port, and its answer is read.
+TCP_PROBE_TIMEOUT_SECONDS = 10.0
+_OPENED = ("mux_client_request_stdio_fwd: master session id", "channel_input_open_confirmation")
+_REFUSED = ("open failed", "Session open refused", "forwarding request failed")
+_MUX_BROKEN = ("Control socket connect", "mux_client_hello_exchange", "master hello")
+
+Runner = Callable[[sshcmd.Command, float], "tuple[str, list[str]]"]
+
+
+def watch_ssh(cmd: sshcmd.Command, timeout: float) -> tuple[str, list[str]]:
+    """Run an `ssh -W` probe and classify it from stderr: "opened", "refused", "timeout"
+    or "exited" (ssh quit without either answer). The probe is always killed afterwards."""
+    proc = subprocess.Popen(cmd.argv, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.PIPE, env={**os.environ, **cmd.env}, start_new_session=True)
+    lines: list[str] = []
+    buffer = b""
+    deadline = time.monotonic() + timeout
+    try:
+        with selectors.DefaultSelector() as sel:
+            sel.register(proc.stderr, selectors.EVENT_READ)
+            while (left := deadline - time.monotonic()) > 0:
+                if not sel.select(timeout=left):
+                    continue
+                chunk = os.read(proc.stderr.fileno(), 4096)
+                if not chunk:
+                    return "exited", lines
+                buffer += chunk
+                *complete, buffer = buffer.split(b"\n")
+                for raw in complete:
+                    line = raw.decode("utf-8", "replace").strip()
+                    lines.append(line)
+                    if any(m in line for m in _OPENED):
+                        return "opened", lines
+                    if any(m in line for m in _REFUSED):
+                        return "refused", lines
+            return "timeout", lines
+    finally:
+        _kill_group(proc)
+
+
+def _kill_group(proc: subprocess.Popen) -> None:
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    proc.wait()
+    for stream in (proc.stdin, proc.stderr):
+        if stream:
+            stream.close()
+
+
+def _reason(lines: list[str]) -> str:
+    for line in reversed(lines):
+        if "connect failed:" in line:
+            return line.split("connect failed:", 1)[1].strip()
+    return "connection refused (port closed, or the bastion does not allow forwarding there)"
+
+
+def tcp_probe(tunnel: Tunnel, run: Runner = watch_ssh, timeout: float = TCP_PROBE_TIMEOUT_SECONDS) -> Probe:
+    target = f"{tunnel.remote_host}:{tunnel.remote_port}"
+    owned = paths.control_path(tunnel.name).exists()
+    cmd = sshcmd.build_mux_probe(tunnel) if owned else sshcmd.build_standalone_probe(tunnel)
+    outcome, lines = run(cmd, timeout)
+    if outcome == "opened":
+        return Probe(True, f"far end {target} reachable", reachable=True)
+    if outcome == "refused":
+        # The bastion answered: the problem is beyond it, reopening ssh will not help.
+        return Probe(False, f"bastion could not connect to {target}: {_reason(lines)}", reachable=True)
+    if outcome == "timeout":
+        return Probe(False, f"no answer from {target} within {int(timeout)}s "
+                            f"(unreachable or filtered from the bastion)", reachable=True)
+    last = next((ln for ln in reversed(lines) if ln and not ln.startswith("debug")), "no output")
+    # ssh itself failed (dead control socket, login refused…): that is ours to fix.
+    return Probe(False, f"check could not run: {last[:160]}", reachable=False)

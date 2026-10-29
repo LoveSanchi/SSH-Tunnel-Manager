@@ -40,6 +40,7 @@ class World:
         self.killed: list[int] = []
         self.terminated: list[int] = []
         self.launched: list[FakeHandle] = []
+        self.prepared: list[str] = []
         self.log_line = "ssh: Connection refused"
         self._pid = 500
 
@@ -56,6 +57,7 @@ class World:
             log_path=lambda name: Path(f"/tmp/{name}.log"),
             clock=lambda: self.now,
             sleep=self._sleep,
+            prepare=lambda t: self.prepared.append(t.name),
         )
 
     def _launch(self, cmd, log_path):

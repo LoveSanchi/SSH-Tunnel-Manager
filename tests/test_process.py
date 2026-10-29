@@ -47,3 +47,12 @@ def test_kill_pids(tmp_path):
     proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
     process.kill_pids([proc.pid, 999999])
     assert proc.wait(timeout=5) is not None
+
+
+def test_prepare_control_socket(tmp_path):
+    ctl = tmp_path / "run" / "tk" / "a.ctl"
+    process.prepare_control_socket(ctl)
+    assert ctl.parent.is_dir() and oct(ctl.parent.stat().st_mode)[-3:] == "700"
+    ctl.touch()
+    process.prepare_control_socket(ctl)
+    assert not ctl.exists()

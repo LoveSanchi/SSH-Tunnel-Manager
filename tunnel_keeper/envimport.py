@@ -90,7 +90,7 @@ def tunnel_from_env(
     if not local_port:
         raise ConfigError(f"{prefix}_LOCAL_PORT is not set (pass --local-port)")
 
-    check: dict[str, str] = {"check_type": "port"}
+    check: dict[str, str] = {"check_type": "tcp"}
     user = env.get(f"{mysql_prefix}_USER", "") if mysql_prefix else ""
     if user:
         check = {"check_type": "mysql", "check_user": user,

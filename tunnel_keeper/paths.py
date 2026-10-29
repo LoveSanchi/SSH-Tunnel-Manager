@@ -31,6 +31,16 @@ def log_file(tunnel_name: str) -> Path:
     return state_dir() / f"{tunnel_name}.log"
 
 
+def runtime_dir() -> Path:
+    runtime = os.environ.get("XDG_RUNTIME_DIR", "").strip()
+    return Path(runtime) / APP if runtime else state_dir() / "run"
+
+
+def control_path(tunnel_name: str) -> Path:
+    """ssh ControlMaster socket of a tunnel tunnel-keeper started (used by the far-end check)."""
+    return runtime_dir() / f"{tunnel_name}.ctl"
+
+
 def socket_path() -> Path:
     override = os.environ.get("TUNNEL_KEEPER_SOCKET", "").strip()
     if override:

@@ -91,6 +91,11 @@ def test_add_builds_tunnel():
     assert t["auth_type"] == "password_file" and t["check_type"] == "mysql"
 
 
+def test_add_warns_for_mysql_port_with_tcp_check(capsys):
+    cli.main(["add", "x", "--ssh", "me@b", "--local-port", "3320", "--remote", "10.0.0.1:3306"], Recorder(ROW))
+    assert "usually MySQL" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("args", [
     ["add", "x", "--ssh", "bastion", "--local-port", "1", "--remote", "h:1"],
     ["add", "x", "--ssh", "a@b", "--local-port", "1", "--remote", "h"],

@@ -65,6 +65,7 @@ class Deps:
     kill_pids: Callable[[list[int]], None] = process.kill_pids
     last_log_line: Callable[[Path], str] = process.last_log_line
     log_path: Callable[[str], Path] = paths.log_file
+    prepare: Callable[[Tunnel], None] = lambda t: process.prepare_control_socket(paths.control_path(t.name))
     clock: Callable[[], float] = time.time
     sleep: Callable[[float], None] = time.sleep
 
@@ -246,6 +247,7 @@ class Supervisor:
         if not force and self._deps.clock() < rt.next_attempt_at:
             return self._status(t, DOWN, f"{reason or 'down'}; waiting to retry")
 
+        self._deps.prepare(t)
         handle = self._deps.launch(self._deps.build_command(t), self._deps.log_path(t.name))
         self._put_rt(t.name, dataclasses.replace(rt, handle=handle))
 

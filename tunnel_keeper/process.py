@@ -101,6 +101,12 @@ def launch(cmd: Command, log_path: Path) -> ProcessHandle:
     return ProcessHandle(proc)
 
 
+def prepare_control_socket(control_path: Path) -> None:
+    """ssh will not create the socket's folder, and refuses to be a master over a stale socket."""
+    control_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    control_path.unlink(missing_ok=True)
+
+
 def kill_pids(pids: list[int]) -> None:
     """Stop ssh processes we did not start (e.g. opened by a repo script)."""
     for pid in pids:

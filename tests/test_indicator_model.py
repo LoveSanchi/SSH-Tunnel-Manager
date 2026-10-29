@@ -28,7 +28,7 @@ def test_titles_and_details():
     lines = model.tunnel_details(ROW, now=130)
     assert lines[0] == "Up — SELECT 1 ok"
     assert lines[3] == "checked 30s ago · SELECT 1 check"
-    assert model.tunnel_details({**ROW, "check_type": "port", "checked_at": 0})[3].startswith("not checked yet")
+    assert model.tunnel_details({**ROW, "check_type": "tcp", "checked_at": 0})[3] == "not checked yet · far-end reachability check"
 
 
 def test_age_minutes():
@@ -82,3 +82,10 @@ def test_retry_line_only_when_not_up():
     down = {**ROW, "state": "down", "next_retry_at": 160, "failures": 2}
     assert model.tunnel_details(down, now=130)[-1] == "next retry in 30s · 2 failed tries"
     assert len(model.tunnel_details({**ROW, "next_retry_at": 160}, now=130)) == 4
+
+
+def test_form_warnings_for_mysql_ports():
+    assert "usually MySQL" in model.form_warnings({"remote_port": "3306", "check_type": "tcp"})[0]
+    assert model.form_warnings({"remote_port": "3306", "check_type": "mysql"}) == []
+    assert model.form_warnings({"remote_port": "6379", "check_type": "tcp"}) == []
+    assert model.form_warnings({"remote_port": "", "check_type": "tcp"}) == []

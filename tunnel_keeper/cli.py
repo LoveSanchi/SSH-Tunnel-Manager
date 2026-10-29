@@ -115,13 +115,19 @@ def cmd_add(args, request: Request) -> int:
         "remote_port": args.remote_port,
         "auth_type": "key" if args.key else "password_file" if args.password_file else "agent",
         "auth_path": args.key or args.password_file or "",
-        "check_type": "mysql" if args.mysql_user else "port",
+        "check_type": "mysql" if args.mysql_user else "tcp",
         "check_user": args.mysql_user or "",
         "check_password_file": args.mysql_password_file or "",
         "check_database": args.mysql_database or "",
     }
+    _warn(cfg.tunnel_from_dict(tunnel))
     print(format_rows([request("add", tunnel=tunnel, replace=args.replace)]))
     return EXIT_OK
+
+
+def _warn(tunnel: cfg.Tunnel) -> None:
+    for text in cfg.warnings(tunnel):
+        print(f"warning: {text}", file=sys.stderr)
 
 
 def cmd_import(args, request: Request) -> int:
@@ -134,6 +140,7 @@ def cmd_import(args, request: Request) -> int:
                                        args.mysql_prefix or "")
     if args.local_port:
         tunnel = cfg.validate(dataclasses.replace(tunnel, local_port=args.local_port))
+    _warn(tunnel)
     print(format_rows([request("add", tunnel=cfg.tunnel_to_dict(tunnel), replace=args.replace)]))
     return EXIT_OK
 
@@ -193,7 +200,8 @@ def build_parser() -> argparse.ArgumentParser:
     auth = s.add_mutually_exclusive_group()
     auth.add_argument("--key", metavar="FILE")
     auth.add_argument("--password-file", metavar="FILE")
-    s.add_argument("--mysql-user", help="check with SELECT 1 as this user (else a port check)")
+    s.add_argument("--mysql-user", help="it is MySQL: check with SELECT 1 as this user "
+                                        "(otherwise: check the far port is reachable)")
     s.add_argument("--mysql-password-file", metavar="FILE",
                    help="file holding the password (stored as-is; not copied)")
     s.add_argument("--mysql-database")

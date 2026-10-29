@@ -8,9 +8,16 @@ their health in the GNOME top bar next to Wi-Fi and Bluetooth.
 - **Always on.** A systemd *user* service starts at login and checks every
   tunnel on a schedule (default every 2 minutes). If a tunnel's ssh process
   dies, it is reopened within about 5 seconds.
-- **Real health checks.** MySQL tunnels are checked with a real `SELECT 1`.
-  ssh keeps accepting local connections after the bastion→database leg has
-  died, so an open port proves nothing. Other tunnels get a port check.
+- **Green means the whole path works, never just "ssh is running".** A
+  tunnel is only green once the far end has answered through it:
+  - **MySQL databases** are checked with a real `SELECT 1`, using a
+    read-only login.
+  - **Any other TCP service** (Redis, HTTP, SSH, …) is checked by asking the
+    tunnel's ssh to open `remote_host:remote_port`, and reading its answer:
+    opened, refused, or no answer within 10 seconds.
+
+  A listening local port proves nothing on its own. ssh keeps accepting
+  local connections even when the bastion cannot reach the target.
 - **Safe recovery.** A tunnel is restarted only after 3 failed checks in a
   row. If MySQL itself answers with an error (access denied, too many
   connections), the tunnel is not restarted, because reopening it would not
@@ -59,14 +66,16 @@ none are up, and grey when the service is not running.
 
 | New tunnel / Edit | Settings |
 |---|---|
-| ![Edit a tunnel](docs/screenshots/edit-tunnel.png) | ![Settings](docs/screenshots/settings.png) |
+| ![New tunnel](docs/screenshots/new-tunnel.png) | ![Settings](docs/screenshots/settings.png) |
 
 - **New tunnel…** asks for:
   - a name and a local port
   - the remote host and port, as seen from the SSH server
   - the SSH login (`user@host`) and port
   - how to authenticate: ssh-agent or default keys, a key file, or a password file
-  - a health check: port, or MySQL `SELECT 1`
+  - **what's behind it:** a MySQL database (checked with `SELECT 1`, which
+    needs a login) or any other TCP service (checked for reachability, no
+    login needed)
 - **Edit…** opens the same form, pre-filled. Change the name there to rename
   the tunnel. Leave the MySQL password blank to keep the current one.
 - **Kill** closes the tunnel and keeps it down until you **Start** it again.
@@ -80,6 +89,8 @@ none are up, and grey when the service is not running.
 tunnelctl status                       # every tunnel, its state and last check
 tunnelctl add orders-db --ssh deploy@bastion.example.com --local-port 3390 \
     --remote 10.20.0.7:3306 --mysql-user readonly --mysql-password-file ~/.secrets/orders
+tunnelctl add cache-redis --ssh deploy@bastion.example.com --local-port 6380 \
+    --remote 10.20.1.4:6379             # no --mysql-user: reachability check
 tunnelctl refresh [NAME]               # check now, reopen anything down
 tunnelctl stop NAME | start NAME | restart NAME | remove NAME
 tunnelctl rename OLD NEW
@@ -92,8 +103,8 @@ tunnelctl ensure --port 3390           # for scripts, see below
 $ tunnelctl status
 ● orders-db     up       :3390  → 10.20.0.7:3306           checked 42s ago
                 SELECT 1 ok
-○ analytics-db  down     :3391  → 10.20.0.9:3306           checked 8s ago
-                ssh exited: Connection timed out; waiting to retry
+✕ cache-redis   error    :6380  → 10.20.1.4:6379           checked 8s ago
+                bastion could not connect to 10.20.1.4:6379: connection refused
 ◌ reports-db    stopped  :3392  → 10.20.0.11:3306          checked 10m ago
                 stopped
 ```
@@ -140,6 +151,22 @@ fi
 # 2/3: not managed or service down: open the tunnel the old way
 ```
 
+## What the colours mean
+
+| Dot | Meaning |
+|---|---|
+| 🟢 up | the far end answered through the tunnel at the last check (see "checked … ago") |
+| 🔴 down / error | ssh is not running, or it is but the far end did not answer; the reason is shown, e.g. `no answer from 10.20.0.9:3306 within 10s (unreachable or filtered from the bastion)` |
+| 🟠 conflict | another program holds the local port |
+| ⚪ stopped | you killed it; it stays down until you start it |
+
+**MySQL and the reachability check.** Do not use the reachability check for a
+MySQL server. Each check opens and drops a connection without logging in.
+MySQL counts those, and after `max_connect_errors` of them in a row (100 by
+default) it blocks the connecting host, which is the bastion, so it blocks
+everyone using it. The form and `tunnelctl add` warn when the remote port
+looks like MySQL (3306–3310).
+
 ## How it works
 
 ```
@@ -151,9 +178,13 @@ tunnel-keeper.service (systemd --user)
    tunnelctl          tunnel-keeper-indicator (GTK 3 + AppIndicator)
 ```
 
+- **How the reachability check reaches the far end.** Each ssh the service
+  starts is also an ssh ControlMaster, so the check runs over the tunnel's
+  own session (`ssh -S … -W host:port`) without logging in again.
 - **Adopting existing tunnels.** If a tunnel for the same forward was already
   opened by something else, such as a project script, it is *adopted* when
-  healthy and replaced when not.
+  healthy and replaced when not. An adopted tunnel has no control socket, so
+  its reachability check logs in separately.
 - **Port conflicts.** If an unrelated program holds the local port, the tunnel
   shows **conflict** and nothing is killed.
 - **Where things are stored.**
@@ -176,3 +207,7 @@ python3 -m venv --system-site-packages .venv
 .venv/bin/python -m pytest --cov       # 160+ tests, ~98% coverage
 python3 docs/screenshots/generate.py   # regenerate the README screenshots (demo data)
 ```
+
+## License
+
+[MIT](LICENSE)

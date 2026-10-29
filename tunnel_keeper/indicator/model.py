@@ -56,12 +56,25 @@ def tunnel_details(row: dict, now: float | None = None) -> list[str]:
     lines = [f"{row['state'].capitalize()} — {row.get('detail') or 'no detail'}"]
     lines.append(f"127.0.0.1:{row['local_port']} → {row['remote']}")
     lines.append(f"via {row['via']}")
-    lines.append(f"{age(row.get('checked_at', 0), now)} · {'SELECT 1' if row['check_type'] == 'mysql' else 'port'} check")
+    lines.append(f"{age(row.get('checked_at', 0), now)} · {CHECK_LABELS.get(row['check_type'], row['check_type'])}")
     retry_at = row.get("next_retry_at") or 0
     if retry_at and row["state"] != "up":
         current = now if now is not None else time.time()
         lines.append(f"next retry in {max(0, int(retry_at - current))}s · {row.get('failures', 0)} failed tries")
     return lines
+
+
+CHECK_LABELS = {"tcp": "far-end reachability check", "mysql": "SELECT 1 check"}
+
+
+def form_warnings(form: dict[str, str]) -> list[str]:
+    """Non-blocking advice for the form, e.g. a MySQL port with a plain reachability check."""
+    port = form.get("remote_port", "").strip()
+    if form.get("check_type", "tcp") != "tcp" or not port.isdigit():
+        return []
+    probe = cfg.Tunnel(name="x", ssh_host="h", ssh_user="u", local_port=1024, remote_host="h",
+                       remote_port=int(port), check_type="tcp")
+    return cfg.warnings(probe)
 
 
 def structure(rows: list[dict] | None, now: float | None = None) -> Any:
@@ -121,7 +134,7 @@ def tunnel_from_form(form: dict[str, str]) -> dict[str, Any]:
         "remote_port": _port(form.get("remote_port", ""), "Remote port"),
         "auth_type": auth_type,
         "auth_path": form.get("auth_path", "").strip() if auth_type != "agent" else "",
-        "check_type": form.get("check_type", "port"),
+        "check_type": form.get("check_type", "tcp"),
         "check_user": form.get("check_user", "").strip(),
         "check_database": form.get("check_database", "").strip(),
         "check_password_file": form.get("check_password_file", "") if form.get("check_type") == "mysql" else "",

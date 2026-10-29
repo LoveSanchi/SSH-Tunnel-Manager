@@ -25,7 +25,7 @@ install -m 755 "$PKG/bin/tunnelctl" "$PKG/bin/tunnel-keeper-indicator" "$STAGE/u
 install -m 644 "$PKG/tunnel-keeper.service" "$STAGE/usr/lib/systemd/user/"
 install -m 644 "$PKG/tunnel-keeper-indicator.desktop" "$STAGE/etc/xdg/autostart/"
 install -m 644 "$PKG/tunnel-keeper-indicator.desktop" "$STAGE/usr/share/applications/"
-install -m 644 "$ROOT/README.md" "$STAGE/usr/share/doc/tunnel-keeper/"
+install -m 644 "$ROOT/README.md" "$ROOT/LICENSE" "$STAGE/usr/share/doc/tunnel-keeper/"
 
 mkdir -p "$ROOT/dist"
 dpkg-deb --root-owner-group --build "$STAGE" "$ROOT/dist/tunnel-keeper_${VERSION}_all.deb"

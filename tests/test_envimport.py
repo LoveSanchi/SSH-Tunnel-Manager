@@ -67,7 +67,7 @@ def test_key_auth_and_port_check():
     env = {k: v for k, v in ENV.items() if k != "DB_TUNNEL_PASSWORD_FILE"}
     env["DB_TUNNEL_SSH_KEY"] = "~/.ssh/id"
     t = envimport.tunnel_from_env(env, "orders-db", "DB_TUNNEL", write=fake_writer({}))
-    assert t.auth_type == "key" and t.check_type == "port"
+    assert t.auth_type == "key" and t.check_type == "tcp"
 
 
 def test_agent_auth_when_nothing_given():

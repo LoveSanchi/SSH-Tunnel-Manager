@@ -138,3 +138,14 @@ def test_replacing_renames_in_place_and_checks_clashes(tunnel):
         config.replacing("orders", dataclasses.replace(tunnel, local_port=3400))
     with pytest.raises(ConfigError, match="no tunnel named"):
         config.replacing("ghost", tunnel)
+
+
+def test_legacy_port_check_becomes_tcp(tunnel):
+    raw = {**cfg.tunnel_to_dict(tunnel), "check_type": "port"}
+    assert cfg.tunnel_from_dict(raw).check_type == "tcp"
+
+
+def test_warnings(tunnel):
+    assert cfg.warnings(dataclasses.replace(tunnel, check_type="tcp", remote_port=3307))
+    assert cfg.warnings(dataclasses.replace(tunnel, check_type="tcp", remote_port=6379)) == []
+    assert cfg.warnings(dataclasses.replace(tunnel, check_type="mysql", check_user="ro")) == []

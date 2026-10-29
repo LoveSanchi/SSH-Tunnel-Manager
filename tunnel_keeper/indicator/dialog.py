@@ -10,11 +10,12 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk  # noqa: E402
 
-from tunnel_keeper.indicator.model import FormError, tunnel_from_form  # noqa: E402
+from tunnel_keeper.indicator.model import FormError, form_warnings, tunnel_from_form  # noqa: E402
 
 AUTH_CHOICES = (("agent", "ssh-agent / default keys"), ("key", "Private key file"),
                 ("password_file", "Password file"))
-CHECK_CHOICES = (("port", "Port is listening"), ("mysql", "MySQL SELECT 1"))
+CHECK_CHOICES = (("tcp", "Any TCP service — check the far port is reachable"),
+                 ("mysql", "MySQL database — check with SELECT 1 (needs a login)"))
 
 # submit(tunnel dict, mysql password or "", done) — must call done(error or None) on the GTK thread
 Done = Callable[["str | None"], None]
@@ -55,7 +56,7 @@ class TunnelDialog(Gtk.Dialog):
         self._auth_file_label = self._attach(grid, "File", self._auth_file)
 
         self._section(grid, "Health check")
-        self._check = self._combo(grid, "Check", CHECK_CHOICES, self._on_check_changed)
+        self._check = self._combo(grid, "Behind it", CHECK_CHOICES, self._on_check_changed)
         self._mysql_widgets = [
             self._entry(grid, "check_user", "MySQL user", ""),
             self._entry(grid, "check_password", "MySQL password",
@@ -63,6 +64,12 @@ class TunnelDialog(Gtk.Dialog):
                         secret=True),
             self._entry(grid, "check_database", "Database", "optional"),
         ]
+
+        self._warning = Gtk.Label(xalign=0, wrap=True, max_width_chars=60)
+        self._warning.get_style_context().add_class("warning")
+        grid.attach(self._warning, 0, self._row, 2, 1)
+        self._row += 1
+        self._entries["remote_port"].connect("changed", lambda *_: self._update_warning())
 
         self._error = Gtk.Label(xalign=0, wrap=True)
         self._error.get_style_context().add_class("error")
@@ -127,6 +134,14 @@ class TunnelDialog(Gtk.Dialog):
         for entry, label in self._mysql_widgets:
             entry.set_visible(visible)
             label.set_visible(visible)
+        self._update_warning()
+
+    def _update_warning(self) -> None:
+        if not hasattr(self, "_warning"):
+            return  # still building the form
+        text = " ".join(form_warnings(self._form()))
+        self._warning.set_text(f"⚠ {text}" if text else "")
+        self._warning.set_visible(bool(text))
 
     # ── submit ────────────────────────────────────────────────────────────────
     def _form(self) -> dict[str, str]:
