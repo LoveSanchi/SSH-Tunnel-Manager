@@ -89,3 +89,14 @@ def test_form_warnings_for_mysql_ports():
     assert model.form_warnings({"remote_port": "3306", "check_type": "mysql"}) == []
     assert model.form_warnings({"remote_port": "6379", "check_type": "tcp"}) == []
     assert model.form_warnings({"remote_port": "", "check_type": "tcp"}) == []
+
+
+def test_duplicate_form_picks_a_free_name_and_port():
+    t = {"name": "orders", "ssh_user": "u", "ssh_host": "bastion", "ssh_port": 22, "local_port": 3307,
+         "remote_host": "db", "remote_port": 3306, "auth_type": "agent", "check_type": "mysql",
+         "check_user": "ro", "check_password_file": "~/.config/tunnel-keeper/secrets/orders.mysql-password"}
+    form = model.duplicate_form(t, {"orders", "orders-copy"}, {3307, 3308})
+    assert form["name"] == "orders-copy-2" and form["local_port"] == "3309"
+    assert form["remote_host"] == "db" and form["check_user"] == "ro"
+    assert form["check_password_file"] == t["check_password_file"]
+    assert model.duplicate_form({**t, "local_port": 65535}, set(), {65535})["local_port"] == ""

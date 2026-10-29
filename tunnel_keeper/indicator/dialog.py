@@ -23,11 +23,13 @@ Submit = Callable[[dict, str, Done], None]
 
 
 class TunnelDialog(Gtk.Dialog):
-    """Create a tunnel, or edit one when `initial` (a tunnel_to_form dict) is given."""
+    """Create a tunnel, or edit one when `initial` (a tunnel_to_form dict) is given.
+    `copy_of` names the tunnel being duplicated: then `initial` pre-fills a new one."""
 
-    def __init__(self, submit: Submit, initial: dict[str, str] | None = None):
-        editing = initial is not None
-        super().__init__(title=f"Edit {initial['name']}" if editing else "New tunnel", flags=0)
+    def __init__(self, submit: Submit, initial: dict[str, str] | None = None, copy_of: str = ""):
+        editing = initial is not None and not copy_of
+        title = f"Edit {initial['name']}" if editing else f"Duplicate {copy_of}" if copy_of else "New tunnel"
+        super().__init__(title=title, flags=0)
         self._initial = initial or {}
         self.set_default_size(460, -1)
         self.set_keep_above(True)
@@ -60,7 +62,8 @@ class TunnelDialog(Gtk.Dialog):
         self._mysql_widgets = [
             self._entry(grid, "check_user", "MySQL user", ""),
             self._entry(grid, "check_password", "MySQL password",
-                        "leave blank to keep the current one" if editing else "stored owner-only in ~/.config",
+                        "leave blank to keep the current one" if editing
+                        else f"leave blank to reuse {copy_of}'s" if copy_of else "stored owner-only in ~/.config",
                         secret=True),
             self._entry(grid, "check_database", "Database", "optional"),
         ]

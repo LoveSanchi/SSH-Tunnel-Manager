@@ -30,6 +30,12 @@ def write_secret(name: str, value: str) -> str:
     return "~" + text[len(home):] if text.startswith(home + os.sep) else text
 
 
+def read_secret(name: str) -> str:
+    """The stored password of tunnel `name` (raises OSError when there is none)."""
+    with open(_path(name), encoding="utf-8") as fh:
+        return fh.read().rstrip("\n")
+
+
 def delete_secret(name: str) -> None:
     _path(name).unlink(missing_ok=True)
 
@@ -45,9 +51,6 @@ def is_managed(path: str, name: str) -> bool:
 
 def rename_secret(old: str, new: str) -> str:
     """Move tunnel `old`'s stored password to `new`; returns the new path (as ~/…)."""
-    source = _path(old)
-    with open(source, encoding="utf-8") as fh:
-        value = fh.read().rstrip("\n")
-    written = write_secret(new, value)
-    source.unlink(missing_ok=True)
+    written = write_secret(new, read_secret(old))
+    _path(old).unlink(missing_ok=True)
     return written

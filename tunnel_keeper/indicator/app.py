@@ -168,6 +168,7 @@ class Indicator:
         _item(sub, "Show log", lambda *_: self._show_log(name))
         sub.append(Gtk.SeparatorMenuItem())
         _item(sub, "Edit…", lambda *_: self._edit(name), sensitive=idle)
+        _item(sub, "Duplicate…", lambda *_: self._duplicate(name), sensitive=idle)
         _item(sub, "Rename…", lambda *_: self._rename(name), sensitive=idle)
         _item(sub, "Remove…", lambda *_: self._remove(name), sensitive=idle)
         return sub
@@ -218,6 +219,24 @@ class Indicator:
 
         self._run(f"Loading {name}",
                   lambda: GLib.idle_add(fetched, client.request("get", name=name)))
+
+
+    def _duplicate(self, name: str) -> None:
+        """A new tunnel pre-filled from `name`; its stored MySQL password is copied unless
+        a new one is typed."""
+        def submit(tunnel: dict, password: str, done: Callable[[str | None], None]) -> None:
+            extra = {"check_password": password} if tunnel["check_type"] == "mysql" and password else {}
+            self._submitter(f"Connecting {tunnel['name']}",
+                            lambda: client.request("add", tunnel=tunnel, copy_secret_from=name, **extra))(done)
+
+        rows = self._rows or []
+        names, ports = {r["name"] for r in rows}, {int(r["local_port"]) for r in rows}
+
+        def fetched(definition: dict) -> bool:
+            TunnelDialog(submit, initial=model.duplicate_form(definition, names, ports), copy_of=name).present()
+            return False
+
+        self._run(f"Loading {name}", lambda: GLib.idle_add(fetched, client.request("get", name=name)))
 
 
 # ── small GTK helpers ─────────────────────────────────────────────────────────

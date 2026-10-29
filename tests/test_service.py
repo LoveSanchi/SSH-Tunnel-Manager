@@ -221,3 +221,30 @@ def test_settings_interval(svc, saved):
     assert "between 30 and 3600" in svc.handle({"cmd": "settings", "interval_seconds": 5})["error"]
     assert "between" in svc.handle({"cmd": "settings", "interval_seconds": True})["error"]
     assert ok(svc.handle({"cmd": "settings"}))["interval_seconds"] == 60
+
+
+def test_add_duplicate_copies_the_originals_password(world, tunnel, saved, tmp_path):
+    from tunnel_keeper.supervisor import Supervisor
+    secrets = {"orders": "pw"}
+
+    def write(name, value):
+        secrets[name] = value
+        return f"~/s/{name}"
+
+    def read(name):
+        if name not in secrets:
+            raise OSError("gone")
+        return secrets[name]
+
+    sup = Supervisor(Config(path=tmp_path / "t.json").with_tunnel(tunnel), world.deps())
+    svc = Service(sup, save=saved.append, load=lambda path: Config(path=path), write_secret=write,
+                  delete_secret=lambda name: secrets.pop(name, None), read_secret=read,
+                  is_managed_secret=lambda path, name: path == f"~/s/{name}", clock=lambda: world.now)
+    world._current_port = 3331
+    copy = {**cfg.tunnel_to_dict(tunnel), "name": "orders-copy", "local_port": 3331, "check_type": "mysql",
+            "check_user": "ro", "check_password_file": "~/s/orders"}
+    ok(svc.handle({"cmd": "add", "tunnel": copy, "copy_secret_from": "orders"}))
+    assert secrets["orders-copy"] == "pw" and saved[-1].get("orders-copy").check_password_file == "~/s/orders-copy"
+    secrets.pop("orders")
+    again = {**copy, "name": "orders-copy-2", "local_port": 3332}
+    assert "type it in the form" in svc.handle({"cmd": "add", "tunnel": again, "copy_secret_from": "orders"})["error"]

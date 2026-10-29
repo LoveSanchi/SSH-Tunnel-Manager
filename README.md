@@ -23,7 +23,7 @@ their health in the GNOME top bar next to Wi-Fi and Bluetooth.
   connections), the tunnel is not restarted, because reopening it would not
   help. Failed reopens back off 15s → 30s → … up to the check interval.
 - **Top-bar panel.**
-  - Create, edit, rename, kill, start, restart, refresh and remove tunnels.
+  - Create, edit, duplicate, rename, kill, start, restart, refresh and remove tunnels.
   - Copy a tunnel's address and view its log.
   - Change the check interval.
 
@@ -78,6 +78,11 @@ none are up, and grey when the service is not running.
     login needed)
 - **Edit…** opens the same form, pre-filled. Change the name there to rename
   the tunnel. Leave the MySQL password blank to keep the current one.
+- **Duplicate…** opens the New-tunnel form pre-filled from that tunnel, with
+  a new name (`<name>-copy`) and the next free local port. Change what
+  differs, such as the remote host, and create it. Leave the MySQL password
+  blank to reuse the original's: the copy gets its own copy of it, so
+  removing the original never breaks the duplicate.
 - **Kill** closes the tunnel and keeps it down until you **Start** it again.
 - **Show log** shows the service's events for that tunnel and ssh's own output:
 

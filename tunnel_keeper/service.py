@@ -40,6 +40,7 @@ class Service:
         delete_secret: Callable[[str], None] = secretstore.delete_secret,
         rename_secret: Callable[[str, str], str] = secretstore.rename_secret,
         is_managed_secret: Callable[[str, str], bool] = secretstore.is_managed,
+        read_secret: Callable[[str], str] = secretstore.read_secret,
         clock: Callable[[], float] = time.time,
     ):
         self._sup = supervisor
@@ -49,6 +50,7 @@ class Service:
         self._delete_secret = delete_secret
         self._rename_secret = rename_secret
         self._is_managed_secret = is_managed_secret
+        self._read_secret = read_secret
         self._clock = clock
         self._config_lock = threading.Lock()
         self._handlers: dict[str, Callable[[dict], Any]] = {
@@ -141,6 +143,8 @@ class Service:
             raise RequestError("'tunnel' must be an object")
         password = _password(msg)
         tunnel = cfg.tunnel_from_dict(raw)
+        if not password:
+            password = self._copied_password(msg, tunnel)
         with self._config_lock:
             config = self._sup.config
             if config.get(tunnel.name) and not msg.get("replace"):
@@ -153,6 +157,19 @@ class Service:
             self._commit(updated)
         log.info("tunnel %s saved: %s", tunnel.name, tunnel.summary)
         return _row(tunnel, self._sup.heal(tunnel.name, force=True))
+
+    def _copied_password(self, msg: dict, tunnel: cfg.Tunnel) -> str | None:
+        """A duplicate ("copy_secret_from": the original) gets its own copy of the original's
+        stored MySQL password, so removing or renaming the original never breaks it."""
+        source = msg.get("copy_secret_from")
+        if not isinstance(source, str) or not source:
+            return None
+        if tunnel.check_type != "mysql" or not self._is_managed_secret(tunnel.check_password_file, source):
+            return None
+        try:
+            return self._read_secret(source)
+        except OSError as exc:
+            raise RequestError(f"could not read the MySQL password of '{source}': type it in the form") from exc
 
     def _get(self, msg: dict) -> dict:
         """The full definition, for the Edit form. Holds file paths, never secret values."""

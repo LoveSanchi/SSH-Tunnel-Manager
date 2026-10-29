@@ -103,6 +103,20 @@ def tunnel_to_form(t: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def duplicate_form(t: dict[str, Any], names: set[str], ports: set[int]) -> dict[str, str]:
+    """The Duplicate form: everything copied, with a name and local port no tunnel uses yet
+    (two tunnels can't listen on the same port). Change what differs, then create."""
+    form = tunnel_to_form(t)
+    base = f"{t['name']}-copy"
+    name, n = base, 2
+    while name in names:
+        name, n = f"{base}-{n}", n + 1
+    port = int(t["local_port"]) + 1
+    while port in ports:
+        port += 1
+    return {**form, "name": name, "local_port": str(port) if port <= 65535 else ""}
+
+
 class FormError(ValueError):
     pass
 
